@@ -1,10 +1,7 @@
 package com.bookticket.payment_service.service.impl;
 
-import com.bookticket.booking_service.dto.PaymentResponse;
-import com.bookticket.booking_service.dto.PaymentRequest;
 import com.bookticket.payment_service.configuration.StripeConfig;
-import com.bookticket.payment_service.dto.CheckoutSessionRequest;
-import com.bookticket.payment_service.dto.CheckoutSessionResponse;
+import com.bookticket.payment_service.dto.*;
 import com.bookticket.payment_service.entity.Payment;
 import com.bookticket.payment_service.enums.PaymentStatus;
 import com.bookticket.payment_service.exception.PaymentNotFoundException;
@@ -12,6 +9,7 @@ import com.bookticket.payment_service.exception.PaymentProcessingException;
 import com.bookticket.payment_service.repository.PaymentRepository;
 import com.bookticket.payment_service.service.PaymentService;
 import com.stripe.exception.*;
+import com.stripe.model.PaymentIntent;
 import com.stripe.model.checkout.Session;
 import com.stripe.param.checkout.SessionCreateParams;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +18,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashMap;
+import java.util.List;
 
 @Service
 @RequiredArgsConstructor
@@ -103,7 +102,7 @@ public class StripePaymentServiceImpl implements PaymentService {
                     .bookingId(request.bookingId())
                     .userId(request.userId())
                     .amount(request.amount())
-                    .paymentMethod("checkout_session")
+                    .paymentMethod("Stripe_Checkout_Session")
                     .paymentStatus(PaymentStatus.PENDING)
                     .transactionId(session.getId())
                     .paymentGatewayResponse("Checkout Session created: " + session.getId())
@@ -164,32 +163,77 @@ public class StripePaymentServiceImpl implements PaymentService {
         log.info("Verifying Checkout Session: {}", sessionId);
 
         try {
-            // Retrieve Checkout Session from Stripe
-            Session session = Session.retrieve(sessionId);
+            // Retrieve Checkout Session from Stripe with expanded payment_intent
+            // IMPORTANT: We need to expand payment_intent to get the actual payment status
+            HashMap<String, Object> params = new HashMap<>();
+            params.put("expand", List.of("payment_intent"));
+
+            Session session = Session.retrieve(sessionId, params, null);
+
+            // Get the PaymentIntent object (now expanded)
+            PaymentIntent paymentIntent = null;
+            String paymentIntentId = null;
+            String paymentIntentStatus = null;
+
+            if (session.getPaymentIntentObject() != null) {
+                paymentIntent = session.getPaymentIntentObject();
+                paymentIntentId = paymentIntent.getId();
+                paymentIntentStatus = paymentIntent.getStatus();
+                log.info("PaymentIntent expanded - ID: {}, Status: {}", paymentIntentId, paymentIntentStatus);
+            } else if (session.getPaymentIntent() != null) {
+                paymentIntentId = session.getPaymentIntent();
+                log.warn("PaymentIntent not expanded, only ID available: {}", paymentIntentId);
+            }
 
             log.info("Checkout Session retrieved: {}, payment_status: {}, payment_intent: {}, session status: {}",
-                    session.getId(), session.getPaymentStatus(), session.getPaymentIntent(),session.getStatus());
+                    session.getId(), session.getPaymentStatus(), paymentIntentId, session.getStatus());
 
             // Find payment record by session ID
             Payment payment = paymentRepository.findByTransactionId(sessionId)
                     .orElseThrow(() -> new PaymentNotFoundException(
                             "Payment not found for session ID: " + sessionId));
 
-            // Update payment status based on Checkout Session status
+            // Check if session is expired
+            if ("expired".equalsIgnoreCase(session.getStatus())) {
+                log.warn("Checkout Session expired: {}", sessionId);
+                payment.setPaymentStatus(PaymentStatus.FAILED);
+                payment.setPaymentGatewayResponse(
+                        String.format("Session expired: %s", session.getId())
+                );
+                paymentRepository.save(payment);
+                return buildPaymentResponse(payment, "Checkout session expired. Please create a new payment.");
+            }
+
+            // Log PaymentIntent failures (card declined, etc.) but don't fail the session yet
+            if (paymentIntent != null && "requires_payment_method".equals(paymentIntentStatus)) {
+                String failureReason = paymentIntent.getLastPaymentError() != null
+                        ? paymentIntent.getLastPaymentError().getMessage()
+                        : "Unknown error";
+                log.warn("Payment attempt failed for session {}: PaymentIntent status: {}, Reason: {}",
+                        sessionId, paymentIntentStatus, failureReason);
+                log.info("Customer can retry with another payment method on the same session");
+                // Don't update payment status yet - customer can still retry
+            }
+
+            // Update payment status based on Checkout Session payment_status
             PaymentStatus newStatus = mapCheckoutSessionStatus(session.getPaymentStatus());
-            payment.setPaymentStatus(newStatus);
-            payment.setTransactionId(session.getPaymentIntent()); // Update with PaymentIntent ID
-            payment.setPaymentGatewayResponse(
-                    String.format("Session: %s, Status: %s, PaymentIntent: %s",
-                            session.getId(), session.getPaymentStatus(), session.getPaymentIntent())
-            );
+            if(newStatus == PaymentStatus.COMPLETED) {
+                payment.setPaymentIntentId(paymentIntentId);
+                String gatewayResponse = String.format("Session: %s, Status: %s, PaymentIntent: %s",
+                        session.getId(), session.getPaymentStatus(), paymentIntentId);
+                if (paymentIntent != null && paymentIntent.getLastPaymentError() != null) {
+                    gatewayResponse += String.format(", Last Error: %s",
+                            paymentIntent.getLastPaymentError().getMessage());
+                }
+                payment.setPaymentGatewayResponse(gatewayResponse);
 
-            paymentRepository.save(payment);
-
-            log.info("Payment status updated for session {}: {} -> {}",
-                    sessionId, payment.getPaymentStatus(), newStatus);
-
-            return buildPaymentResponse(payment, "Payment verification successful");
+                log.info("Payment status updated for session {}: {} -> {}",
+                        sessionId, payment.getPaymentStatus(), newStatus);
+                payment.setPaymentStatus(newStatus);
+                paymentRepository.save(payment);
+                return buildPaymentResponse(payment, "Payment verification successful");
+            }
+            return buildPaymentResponse(payment, "Payment is Pending. Please try again.");
 
         } catch (PaymentNotFoundException e) {
             throw e;
@@ -262,24 +306,6 @@ public class StripePaymentServiceImpl implements PaymentService {
      * @param errorCode Error code or description
      * @return Saved payment entity or null if save fails
      */
-    private Payment saveFailedPayment(PaymentRequest paymentRequest, String errorMessage, String errorCode) {
-        try {
-            Payment payment = Payment.builder()
-                    .bookingId(paymentRequest.bookingId())
-                    .userId(paymentRequest.userId())
-                    .amount(paymentRequest.amount())
-                    .paymentMethod(paymentRequest.paymentMethod())
-                    .paymentStatus(PaymentStatus.FAILED)
-                    .paymentGatewayResponse(String.format("Error Code: %s, Message: %s", errorCode, errorMessage))
-                    .build();
-
-            return paymentRepository.save(payment);
-        } catch (Exception dbException) {
-            log.error("Failed to save failed payment record for booking ID {}: {}",
-                    paymentRequest.bookingId(), dbException.getMessage());
-            return null;
-        }
-    }
 
     /**
      * Get user-friendly message for card decline codes

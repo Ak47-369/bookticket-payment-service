@@ -1,6 +1,6 @@
 package com.bookticket.payment_service.controller;
 
-import com.bookticket.booking_service.dto.PaymentResponse;
+import com.bookticket.payment_service.dto.PaymentResponse;
 import com.bookticket.payment_service.dto.CheckoutSessionRequest;
 import com.bookticket.payment_service.dto.CheckoutSessionResponse;
 import com.bookticket.payment_service.service.PaymentService;
@@ -15,11 +15,6 @@ import org.springframework.web.bind.annotation.*;
 public class PaymentController {
 
     private final PaymentService paymentService;
-
-    // ============================================================================
-    // SECURE APPROACH: Checkout Session (RECOMMENDED for Production)
-    // ============================================================================
-
     /**
      * Create Checkout Session - SECURE & BACKEND-FOCUSED
      *

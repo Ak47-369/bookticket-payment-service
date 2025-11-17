@@ -1,6 +1,6 @@
 package com.bookticket.payment_service.exception;
 
-import com.bookticket.booking_service.dto.PaymentResponse;
+import com.bookticket.payment_service.dto.PaymentResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -13,7 +13,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 public class GlobalExceptionHandler {
 
     @ExceptionHandler(PaymentNotFoundException.class)
-    public ResponseEntity<com.bookticket.booking_service.dto.PaymentResponse> handlePaymentNotFoundException(PaymentNotFoundException ex) {
+    public ResponseEntity<PaymentResponse> handlePaymentNotFoundException(PaymentNotFoundException ex) {
         log.error("Payment not found: {}", ex.getMessage());
         PaymentResponse response = new PaymentResponse(
                 null,

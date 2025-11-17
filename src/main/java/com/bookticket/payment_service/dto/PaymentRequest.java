@@ -1,4 +1,4 @@
-package com.bookticket.booking_service.dto;
+package com.bookticket.payment_service.dto;
 
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;

@@ -14,7 +14,7 @@ import org.springframework.context.annotation.Configuration;
 public class StripeConfig {
     private String secretKey;
     private String publicKey;
-    private String returnUrl;
+//    private String returnUrl;
     private String successUrl;  // For Checkout Session
     private String cancelUrl;   // For Checkout Session
 

@@ -25,6 +25,9 @@ public class Payment extends Auditable{
     @Column(nullable = false)
     private String paymentMethod; // STRIPE, RAZORPAY, PAYPAL, CC, etc.
     private String transactionId; // From Stripe/Razorpay
+    @Column(name = "payment_intent_id")
+    private String paymentIntentId;
+    private String currency;
     @Column(nullable = false)
     @Enumerated(EnumType.STRING)
     private PaymentStatus paymentStatus;
