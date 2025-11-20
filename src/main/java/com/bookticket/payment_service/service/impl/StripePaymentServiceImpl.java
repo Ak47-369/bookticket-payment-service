@@ -88,7 +88,7 @@ public class StripePaymentServiceImpl implements PaymentService {
                                     .build()
                     )
                     .putAllMetadata(metadata)
-                    .setExpiresAt(System.currentTimeMillis() / 1000 + 18000) // 30 minutes expiry
+                    .setExpiresAt(System.currentTimeMillis() / 1000 + 18000) // Checkout Must be 30 minutes
                     .build();
 
             // Create Checkout Session via Stripe API
@@ -292,6 +292,7 @@ public class StripePaymentServiceImpl implements PaymentService {
             case "paid" -> PaymentStatus.COMPLETED;
             case "unpaid" -> PaymentStatus.PENDING;
             case "no_payment_required" -> PaymentStatus.COMPLETED;
+            case "expired" -> PaymentStatus.FAILED;
             default -> {
                 log.warn("Unknown Checkout Session payment_status: {}, defaulting to PENDING", paymentStatus);
                 yield PaymentStatus.PENDING;

@@ -14,9 +14,10 @@ import org.springframework.context.annotation.Configuration;
 public class StripeConfig {
     private String secretKey;
     private String publicKey;
-//    private String returnUrl;
+//    private String returnUrl; // TODO Swagger UI
     private String successUrl;  // For Checkout Session
     private String cancelUrl;   // For Checkout Session
+    private Integer checkoutSessionExpiryMinutes;  // Checkout session expiry time in minutes
 
     @PostConstruct
     public void init() {
