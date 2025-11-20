@@ -1,62 +1,7 @@
 spring:
   application:
     name: payment-service
-  jackson:
-    deserialization:
-      FAIL_ON_UNKNOWN_PROPERTIES: false
-  data:
-    jpa:
-      repository:
-        enabled: true
-  datasource:
-    url: jdbc:postgresql://${NEON_HOST}/${NEON_DB}?sslmode=require&channelBinding=require
-    username: ${NEON_USER}
-    password: ${NEON_PASSWORD}
-    driver-class-name: org.postgresql.Driver
-  jpa:
-    hibernate:
-      ddl-auto: update
-    show-sql: true
-    properties:
-      hibernate:
-        format_sql: true
-        use_sql_comments: true
-        dialect: org.hibernate.dialect.PostgreSQLDialect
-  security:
-    filter:
-      dispatcher-types:
-        - ASYNC
-        - ERROR
-        - FORWARD
-        - INCLUDE
-        - REQUEST
-  cloud:
-    config:
-      enabled: false
-server:
-  port: 8085
-logging:
-  level:
-    org.springframework.payment-service: DEBUG
-management:
-  server:
-    port: 9095
-  endpoints:
-    web:
-      exposure:
-        include: "*"
-  endpoint:
-    health:
-      show-details: always
-payment:
-  mode: ${PAYMENT_MODE:MOCK}
-  mock:
-    base-url: ${PAYMENT_SERVICE_MOCK_URL:http://localhost:8085}
-
-stripe:
-  api:
-    secret-key: ${STRIPE_SECRET_KEY}
-    public-key: ${STRIPE_PUBLIC_KEY}
-#    return-url: ${STRIPE_RETURN_URL}
-    success-url: ${STRIPE_SUCCESS_URL}
-    cancel-url: ${STRIPE_CANCEL_URL}
+  config:
+    import: optional:configserver:http://localhost:8888
+  profiles:
+    active: prod
