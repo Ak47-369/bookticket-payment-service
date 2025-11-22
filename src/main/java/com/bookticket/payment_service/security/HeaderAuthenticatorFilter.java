@@ -14,9 +14,9 @@ import java.util.Arrays;
 import java.util.List;
 
 public class HeaderAuthenticatorFilter extends OncePerRequestFilter {
-    // TODO User Capital Letters X-USER-ROLES
     private static final String USER_ROLES_HEADER = "X-User-Roles";
     private static final String USER_ID_HEADER = "X-User-Id";
+    private static final String USER_NAME_HEADER = "X-User-Name";
 
 
     @Override
@@ -25,6 +25,7 @@ public class HeaderAuthenticatorFilter extends OncePerRequestFilter {
 
         String rolesHeader = request.getHeader(USER_ROLES_HEADER);
         String userId = request.getHeader(USER_ID_HEADER);
+//        String username = request.getHeader(USER_NAME_HEADER);
 
 
         if (rolesHeader != null && !rolesHeader.isEmpty() && userId != null && !userId.isEmpty()) {
