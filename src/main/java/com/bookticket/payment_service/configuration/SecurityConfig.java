@@ -29,6 +29,8 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
                 .authorizeHttpRequests(requests -> requests
+                        .requestMatchers("/actuator/**").permitAll()
+                        .requestMatchers("v3/api-docs/**").permitAll()
                         .requestMatchers("/api/v1/internal/payments/**").hasRole("SERVICE_ACCOUNT")
                         .anyRequest().authenticated()
                 )
