@@ -2,57 +2,42 @@
 
 ## Overview
 
-The **Payment Service** is a specialized microservice that acts as a secure facade and anti-corruption layer for all interactions with our third-party payment provider, Stripe. Its sole responsibility is to handle payment intent creation and process incoming webhooks from Stripe, ensuring that payment logic is secure, isolated, and maintainable.
+The **Payment Service** is a specialized microservice that acts as a secure facade and anti-corruption layer for all interactions with our third-party payment provider, Stripe. Its sole responsibility is to handle payment intent creation, provide a mechanism to verify payment status, and maintain a local, auditable record of every transaction.
 
 ## Core Responsibilities
 
--   **Payment Intent Creation:** Provides an internal API for other services (like the Booking Service) to request the creation of a new payment session.
+-   **Payment Intent Creation:** Provides an internal API for other services (like the Booking Service) to request the creation of a new Stripe Checkout Session.
 -   **Encapsulation of Stripe SDK:** It is the only service in the system that contains the Stripe SDK and API keys, creating a strong security boundary.
--   **Webhook Processing:** Exposes a public endpoint to receive asynchronous webhook events from Stripe (e.g., `payment_intent.succeeded`).
--   **Webhook Signature Verification:** Securely validates that incoming webhooks are genuinely from Stripe before processing them.
--   **Internal Event Publishing:** Publishes internal events (e.g., to Kafka) to notify other services of payment status changes.
+-   **Payment Status Verification:** Exposes an endpoint that allows the `Booking Service` to poll for the status of a payment after the user has been redirected to Stripe.
+-   **Transactional Record Keeping:** Persists a `Payment` entity for every transaction attempt, providing a local audit trail and decoupling the system from relying solely on Stripe's API for historical data.
 
 ## Architecture & Communication Flow
 
-```mermaid
-sequenceDiagram
-    participant BS as Booking Service
-    participant PS as Payment Service
-    participant Stripe as Stripe API
-    participant Kafka
+This service is part of a **synchronous polling** model for payment verification, which is a robust pattern for confirming payment status when a webhook is not used.
+<img width="3425" height="2302" alt="PaymentService" src="https://github.com/user-attachments/assets/4a5f5946-2a76-4106-92d2-11b429099bd8" />
 
-    BS->>+PS: 1. Create Payment Intent (Sync REST Call)
-    PS->>+Stripe: 2. Create PaymentIntent
-    Stripe-->>-PS: Returns client_secret
-    PS-->>-BS: 3. Returns client_secret to Booking Service
-
-    Note over Stripe, Kafka: User completes payment on frontend...
-    
-    Stripe->>+PS: 4. Payment Succeeded (Async Webhook)
-    PS->>PS: 5. Verify Webhook Signature
-    PS->>+Kafka: 6. Publish PaymentSucceededEvent
-    Kafka-->>-PS: Event Persisted
-```
 
 ### How It Works
 
 1.  **Isolation:** This service is the only component that communicates directly with Stripe. This isolates sensitive API keys and decouples the rest of our platform from a specific payment provider implementation.
-2.  **Stateless Design:** The service does not maintain its own database of payment statuses. It acts as a pass-through and relies on Stripe as the single source of truth for all payment information.
-3.  **Synchronous & Asynchronous Flow:**
-    -   Payment creation is a **synchronous** REST call from the Booking Service to get an immediate payment URL/secret for the client.
-    -   Payment confirmation is **asynchronous**, handled via webhooks from Stripe. This ensures reliability even if the user closes their browser or our system experiences temporary downtime.
-4.  **Security:** The public webhook endpoint is secured by verifying the signature of every incoming request from Stripe, preventing spoofing attacks.
+2.  **Transactional Records:** When a payment is initiated, a `Payment` record is immediately created in the service's own **PostgreSQL** database with a `PENDING` status. This provides an immediate, local audit trail for every attempted transaction.
+3.  **Polling for Verification:**
+    -   Payment creation is a **synchronous** REST call from the `Booking Service`.
+    -   After the user is redirected back from Stripe, the `Booking Service` initiates a **polling sequence**. It repeatedly calls the `GET /api/v1/internal/payments/checkout/verify/{sessionId}` endpoint on this service.
+    -   The Payment Service calls the Stripe API to get the latest status. It then updates its local `Payment` record to `COMPLETED` or `FAILED` and returns the final status to the Booking Service.
+4.  **Security:** All interactions are internal (service-to-service), preventing direct external access to the payment creation logic.
 
 ## Key Dependencies
 
 -   **Spring Boot Starter Web:** For building the REST APIs.
+-   **Spring Boot Starter Data JPA:** For database interaction with PostgreSQL.
 -   **Stripe Java SDK (`stripe-java`):** The official library for interacting with the Stripe API.
--   **Spring Kafka:** For publishing internal events after a payment is successfully processed.
 -   **Eureka Discovery Client:** To register with the service registry.
 
 ## API Endpoints
 
--   **Internal API (called by other services):**
-    -   `POST /api/v1/payments`: Creates a new Stripe payment intent.
--   **Public API (called by Stripe):**
-    -   `POST /api/v1/stripe/events`: The webhook endpoint for receiving events from Stripe.
+All endpoints are for internal, service-to-service communication and are not exposed on the public API Gateway.
+
+-   `POST /api/v1/internal/payments/checkout/create`: Creates a new Stripe Checkout Session and a corresponding `Payment` record.
+-   `GET /api/v1/internal/payments/checkout/verify/{sessionId}`: Verifies the current status of a Checkout Session with Stripe and updates the local `Payment` record.
+-   `GET /api/v1/internal/payments/status/{transactionId}`: Retrieves the last known status of a payment from the service's local database.
