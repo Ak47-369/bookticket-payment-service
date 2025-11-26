@@ -41,3 +41,12 @@ All endpoints are for internal, service-to-service communication and are not exp
 -   `POST /api/v1/internal/payments/checkout/create`: Creates a new Stripe Checkout Session and a corresponding `Payment` record.
 -   `GET /api/v1/internal/payments/checkout/verify/{sessionId}`: Verifies the current status of a Checkout Session with Stripe and updates the local `Payment` record.
 -   `GET /api/v1/internal/payments/status/{transactionId}`: Retrieves the last known status of a payment from the service's local database.
+  
+### Admin-Only DLQ Endpoints
+These endpoints are exposed through the API Gateway and require the `ADMIN` role for access. They are used to monitor and manage booking events that have failed to be published to Kafka.
+
+-   `GET /api/v1/admin/booking-dlq/pending`: Retrieves a list of all booking events in the DLQ that are currently in `PENDING` status, awaiting an automatic retry.
+-   `GET /api/v1/admin/booking-dlq/failed`: Retrieves a list of booking events that have exhausted all retry attempts and are now in a terminal `FAILED` state.
+-   `POST /api/v1/admin/booking-dlq/{eventId}/mark-processed`: An administrative action to manually mark a failed event as `PROCESSED`, removing it from the queue.
+-   `GET /api/v1/admin/booking-dlq/stats`: Provides high-level statistics for the DLQ, including the total counts of pending and failed events.
+-   `GET /api/v1/admin/booking-dlq/booking/{bookingId}`: Fetches a detailed list and status summary of all failed events associated with a specific booking ID.
